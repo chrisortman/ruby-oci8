@@ -384,10 +384,23 @@ void oci8_unlink_from_parent(oci8_base_t *base)
     base->parent = NULL;
 }
 
+/* Exported by MRI, though not declared in its public headers. */
+int ruby_thread_has_gvl_p(void);
+
 static void oci8_unblock_func(void *user_data)
 {
     oci8_svcctx_t *svcctx = (oci8_svcctx_t *)user_data;
-    OCIBreak(svcctx->base.hp.ptr, oci8_errhp);
+
+    /*
+     * Ruby calls this to deliver Thread#raise and Thread#kill (Timeout
+     * included) from a thread that holds the GVL, and to run a signal trap
+     * from its timer thread, which does not. Break the call only for the
+     * former: a trap runs once the call returns instead of cancelling a
+     * statement that has nothing to do with the signal.
+     */
+    if (ruby_thread_has_gvl_p()) {
+        OCIBreak(svcctx->base.hp.ptr, oci8_errhp);
+    }
 }
 
 typedef struct free_temp_lob_arg_t {

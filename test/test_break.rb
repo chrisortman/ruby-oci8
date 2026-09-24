@@ -96,6 +96,21 @@ class TestBreak < Minitest::Test
     do_test_ocibreak(@conn, expect)
   end
 
+  def test_signal_trap_does_not_break
+    skip 'SIGUSR1 is not available' unless Signal.list.key?('USR1')
+    @conn.non_blocking = true
+    trapped = false
+    previous_trap = trap('USR1') { trapped = true }
+    Thread.new { sleep 0.5; Process.kill('USR1', Process.pid) }
+    # Long enough to be running when the signal arrives.
+    rows = "(SELECT level l FROM dual CONNECT BY level <= 3000)"
+    count = @conn.select_one("SELECT COUNT(*) FROM #{rows} a, #{rows} b, (SELECT level l FROM dual CONNECT BY level <= 10) c")[0]
+    assert_equal(90_000_000, count)
+    assert(trapped)
+  ensure
+    trap('USR1', previous_trap || 'DEFAULT')
+  end
+
   def test_timeout
     @conn.non_blocking = true
     start_time = Time.now
