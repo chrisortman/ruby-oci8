@@ -13,6 +13,24 @@ class TestOCI8 < Minitest::Test
     @conn.logoff
   end
 
+  def test_free_in_forked_child_keeps_parent_session
+    skip 'fork is not available' unless Process.respond_to?(:fork)
+    # Hold the connection only in an array the child can empty, so that
+    # GC frees the child's copy of it. That must not log off the session
+    # the parent is still using.
+    conns = [get_oci8_connection]
+    pid = fork do
+      conns.clear
+      GC.start(full_mark: true, immediate_sweep: true)
+      sleep 1 # the logoff on free runs in a native thread
+      exit!
+    end
+    Process.wait(pid)
+    assert_equal(1, conns.first.select_one('select 1 from dual')[0])
+  ensure
+    conns.first.logoff if conns&.first
+  end
+
   def test_rename
     drop_table('test_table')
     drop_table('test_rename_table')

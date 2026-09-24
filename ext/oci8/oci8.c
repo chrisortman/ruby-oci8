@@ -194,6 +194,13 @@ static void oci8_svcctx_free(oci8_base_t *base)
     }
     svcctx->temp_lobs = NULL;
 
+    if (svcctx->logoff_strategy != NULL && svcctx->pid != getpid()) {
+        /* A forked child freeing a connection it inherited. Logging off
+         * would end the session the parent process is still using, so
+         * leave the session alone and leak the handles instead.
+         */
+        svcctx->logoff_strategy = NULL;
+    }
     if (svcctx->logoff_strategy != NULL) {
         const oci8_logoff_strategy_t *strategy = svcctx->logoff_strategy;
         void *data = strategy->prepare(svcctx);
